@@ -45,7 +45,7 @@ class GameViewController: UIViewController {
 
         DispatchQueue.main.async {
             guard let vc = activeGameViewController,
-                  vc.activeTabIndex == slot else { return }
+                  vc.currentFocusedSlot == slot else { return }
             vc.emulatorView.displayImage(image)
             if let icon = vc.placeholderIconView, icon.alpha > 0 {
                 UIView.animate(withDuration: 0.15) { icon.alpha = 0 }
@@ -93,6 +93,10 @@ class GameViewController: UIViewController {
     var tabSessions: [TabSession] = []
     var tabButtons: [UIButton] = []
     var activeTabIndex: Int = 0
+    var currentFocusedSlot: Int {
+        guard activeTabIndex >= 0 && activeTabIndex < tabSessions.count else { return 0 }
+        return tabSessions[activeTabIndex].slotIndex
+    }
 
     // Quick floating unhide keypad button
     private let floatingShowKeypadBtn = UIButton(type: .system)
@@ -100,6 +104,7 @@ class GameViewController: UIViewController {
     // Toolbar action buttons (Camera button removed per user request)
     private let multiTabBtn = UIButton(type: .system)
     private let addTabBtn = UIButton(type: .system)
+    private let closeTabBtn = UIButton(type: .system)
     private let keyboardBtn = UIButton(type: .system)
     private let menuBtn = UIButton(type: .system)
 
@@ -250,21 +255,28 @@ class GameViewController: UIViewController {
 
         // Title on left ("x27" / "Tài khoản" / "AngelChip Menu")
         titleLabel.text = appName
-        titleLabel.font = .systemFont(ofSize: 18, weight: .bold)
+        titleLabel.font = .systemFont(ofSize: 16, weight: .bold)
         titleLabel.textColor = .white
+        titleLabel.numberOfLines = 1
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.setContentCompressionResistancePriority(UILayoutPriority(100), for: .horizontal)
+        titleLabel.setContentHuggingPriority(UILayoutPriority(100), for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         topToolbar.addSubview(titleLabel)
 
-        // Toolbar action buttons on right: [++] [+] [⌨] [📷] [⋮]
+        // Toolbar action buttons on right: [++] [+] [−] [⌨] [⋮]
         let actionStack = UIStackView()
         actionStack.axis = .horizontal
-        actionStack.spacing = 10
+        actionStack.spacing = 6
         actionStack.alignment = .center
+        actionStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        actionStack.setContentHuggingPriority(.required, for: .horizontal)
         actionStack.translatesAutoresizingMaskIntoConstraints = false
         topToolbar.addSubview(actionStack)
 
         styleToolbarButton(multiTabBtn, title: "++", action: #selector(multiTabTapped))
         styleToolbarButton(addTabBtn, title: "+", action: #selector(addTabTapped))
+        styleToolbarButton(closeTabBtn, title: "−", action: #selector(closeTabTapped))
         styleToolbarButton(keyboardBtn, title: "⌨", action: #selector(keyboardButtonTapped))
         styleToolbarButton(menuBtn, title: "⋮", action: #selector(showMenu))
 
@@ -278,6 +290,7 @@ class GameViewController: UIViewController {
 
         actionStack.addArrangedSubview(multiTabBtn)
         actionStack.addArrangedSubview(addTabBtn)
+        actionStack.addArrangedSubview(closeTabBtn)
         actionStack.addArrangedSubview(keyboardBtn)
         actionStack.addArrangedSubview(menuBtn)
 
@@ -409,11 +422,11 @@ class GameViewController: UIViewController {
             topToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             topToolbar.heightAnchor.constraint(equalToConstant: 44),
 
-            titleLabel.leadingAnchor.constraint(equalTo: topToolbar.leadingAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 14),
             titleLabel.centerYAnchor.constraint(equalTo: topToolbar.centerYAnchor),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: actionStack.leadingAnchor, constant: -8),
 
-            actionStack.trailingAnchor.constraint(equalTo: topToolbar.trailingAnchor, constant: -12),
+            actionStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -10),
             actionStack.centerYAnchor.constraint(equalTo: topToolbar.centerYAnchor),
 
             // Tab Strip right under Top Toolbar
@@ -455,6 +468,10 @@ class GameViewController: UIViewController {
         btn.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
         btn.setTitleColor(.white, for: .normal)
         btn.contentEdgeInsets = UIEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
+        btn.setContentCompressionResistancePriority(.required, for: .horizontal)
+        btn.setContentHuggingPriority(.required, for: .horizontal)
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        btn.widthAnchor.constraint(greaterThanOrEqualToConstant: 30).isActive = true
         btn.addTarget(self, action: action, for: .touchUpInside)
     }
 
@@ -501,11 +518,10 @@ class GameViewController: UIViewController {
             self?.showProxyPickerForSlot(slot)
         })
 
-        if slot > 0 {
-            sheet.addAction(UIAlertAction(title: "❌ Đóng Tab \(slot + 1)", style: .destructive) { [weak self] _ in
-                self?.closeTab(at: slot)
-            })
-        }
+        let closeTitle = (tabSessions.count > 1) ? "❌ Đóng Tab \(slot + 1)" : "❌ Đóng Tab \(slot + 1) & Thoát"
+        sheet.addAction(UIAlertAction(title: closeTitle, style: .destructive) { [weak self] _ in
+            self?.closeTab(at: slot)
+        })
 
         sheet.addAction(UIAlertAction(title: "Hủy", style: .cancel))
         if let popover = sheet.popoverPresentationController {
@@ -519,10 +535,91 @@ class GameViewController: UIViewController {
         openProxyManager(segment: 1)
     }
 
+    @objc private func closeTabTapped() {
+        let currentTabNum = activeTabIndex + 1
+        let currentName = (activeTabIndex < tabSessions.count) ? tabSessions[activeTabIndex].appName : appName
+
+        let sheet = UIAlertController(
+            title: "Đóng Tab (\(tabSessions.count) tab đang mở)",
+            message: nil,
+            preferredStyle: .actionSheet
+        )
+
+        if tabSessions.count > 1 {
+            sheet.addAction(UIAlertAction(title: "❌ Đóng Tab hiện tại (Tab \(currentTabNum): \(currentName))", style: .destructive) { [weak self] _ in
+                guard let self = self else { return }
+                self.closeTab(at: self.activeTabIndex)
+            })
+
+            sheet.addAction(UIAlertAction(title: "🧹 Đóng các Tab khác (Chỉ giữ Tab \(currentTabNum))", style: .destructive) { [weak self] _ in
+                guard let self = self else { return }
+                self.closeOtherTabs(keeping: self.activeTabIndex)
+            })
+
+            sheet.addAction(UIAlertAction(title: "🚪 Đóng tất cả & Thoát ra danh sách game", style: .destructive) { [weak self] _ in
+                self?.backTapped()
+            })
+        } else {
+            sheet.addAction(UIAlertAction(title: "❌ Đóng Tab 1 & Thoát ra danh sách game", style: .destructive) { [weak self] _ in
+                self?.backTapped()
+            })
+        }
+
+        sheet.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = closeTabBtn
+            popover.sourceRect = closeTabBtn.bounds
+        }
+        present(sheet, animated: true)
+    }
+
+    private func closeOtherTabs(keeping keepIndex: Int) {
+        guard keepIndex >= 0 && keepIndex < tabSessions.count, tabSessions.count > 1 else { return }
+        let keptSession = tabSessions[keepIndex]
+        let removedSlots = tabSessions.enumerated().compactMap { $0.offset == keepIndex ? nil : $0.element.slotIndex }
+
+        for (i, btn) in tabButtons.enumerated() where i != keepIndex {
+            btn.removeFromSuperview()
+        }
+        let keptBtn = tabButtons[keepIndex]
+        keptBtn.tag = 0
+        keptBtn.setTitle("1", for: .normal)
+
+        tabButtons = [keptBtn]
+        tabSessions = [keptSession]
+
+        GameViewController.slotFrameLock.lock()
+        for s in removedSlots {
+            GameViewController.slotFrames.removeValue(forKey: s)
+        }
+        GameViewController.slotFrameLock.unlock()
+
+        for s in removedSlots {
+            jvm_bridge_request_stop_slot(Int32(s))
+        }
+        DispatchQueue.global(qos: .utility).async {
+            for s in removedSlots {
+                jvm_bridge_destroy_slot(Int32(s))
+            }
+        }
+
+        activeTabIndex = -1
+        selectTab(at: 0)
+        showToast(message: "Đã đóng \(removedSlots.count) tab phụ")
+    }
+
     private func closeTab(at index: Int) {
-        guard index > 0 && index < tabButtons.count else { return }
-        jvm_bridge_request_stop_slot(Int32(index))
-        jvm_bridge_destroy_slot(Int32(index))
+        guard index >= 0 && index < tabButtons.count else { return }
+        if tabButtons.count <= 1 {
+            backTapped()
+            return
+        }
+
+        let closedSlot = (index < tabSessions.count) ? tabSessions[index].slotIndex : index
+        jvm_bridge_request_stop_slot(Int32(closedSlot))
+        DispatchQueue.global(qos: .utility).async {
+            jvm_bridge_destroy_slot(Int32(closedSlot))
+        }
 
         let btn = tabButtons[index]
         btn.removeFromSuperview()
@@ -532,7 +629,7 @@ class GameViewController: UIViewController {
         }
 
         GameViewController.slotFrameLock.lock()
-        GameViewController.slotFrames.removeValue(forKey: index)
+        GameViewController.slotFrames.removeValue(forKey: closedSlot)
         GameViewController.slotFrameLock.unlock()
 
         for (i, b) in tabButtons.enumerated() {
@@ -541,6 +638,7 @@ class GameViewController: UIViewController {
         }
 
         let newActive = min(activeTabIndex, tabButtons.count - 1)
+        activeTabIndex = -1
         selectTab(at: newActive)
         showToast(message: "Đã đóng Tab \(index + 1)")
     }
@@ -549,7 +647,7 @@ class GameViewController: UIViewController {
         guard index >= 0 && index < tabButtons.count else { return }
 
         // Capture screenshot and UI state of current tab before switching
-        if activeTabIndex != index && activeTabIndex < tabSessions.count {
+        if activeTabIndex >= 0 && activeTabIndex != index && activeTabIndex < tabSessions.count {
             tabSessions[activeTabIndex].screenshot = takeSnapshot()
             if !formView.isHidden {
                 tabSessions[activeTabIndex].activeUI = 1
@@ -564,9 +662,10 @@ class GameViewController: UIViewController {
 
         activeTabIndex = index
         let session = (index < tabSessions.count) ? tabSessions[index] : tabSessions.first!
+        let slotIdx = session.slotIndex
 
         // Switch focused slot in JVM bridge (switches display rendering & input routing)
-        jvm_bridge_set_focused_slot(Int32(index))
+        jvm_bridge_set_focused_slot(Int32(slotIdx))
 
         // Dynamically update save root for data isolation (-tabN)
         session.saveRoot.withCString { cstr in
@@ -609,7 +708,7 @@ class GameViewController: UIViewController {
             showCanvasView()
             // Immediately isolate and show this tab's frame!
             GameViewController.slotFrameLock.lock()
-            let cachedFrame = GameViewController.slotFrames[index]
+            let cachedFrame = GameViewController.slotFrames[slotIdx]
             GameViewController.slotFrameLock.unlock()
 
             if let frame = cachedFrame {
@@ -630,11 +729,12 @@ class GameViewController: UIViewController {
     }
 
     private func addNewTab(jarPath: String, appName: String, icon: UIImage) {
-        let newSlot = tabButtons.count
-        guard newSlot < 32 else {
+        let usedSlots = Set(tabSessions.map { $0.slotIndex })
+        guard let newSlot = (0..<32).first(where: { !usedSlots.contains($0) }) else {
             showToast(message: "Đã đạt tối đa 32 tab")
             return
         }
+        let newTabIndex = tabButtons.count
 
         let gid = appName.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.path
@@ -661,9 +761,9 @@ class GameViewController: UIViewController {
             activeUI: 0
         )
         tabSessions.append(session)
-        createTabButton(index: newSlot)
+        createTabButton(index: newTabIndex)
 
-        if newSlot == 0 {
+        if newTabIndex == 0 && newSlot == 0 {
             selectTab(at: 0)
         } else {
             // Real Multi-Tab Execution: Launch independent MiniJVM instance for newSlot!
@@ -692,11 +792,11 @@ class GameViewController: UIViewController {
                 jvm_bridge_destroy_slot(Int32(newSlot))
             }
 
-            selectTab(at: newSlot)
+            selectTab(at: newTabIndex)
         }
 
         let folderName = URL(fileURLWithPath: saveRoot).lastPathComponent
-        showToast(message: "Đã thêm Tab \(newSlot + 1): \(appName)\n(Thư mục data: \(folderName))")
+        showToast(message: "Đã thêm Tab \(newTabIndex + 1): \(appName)\n(Thư mục data: \(folderName))")
     }
 
     @objc private func addTabTapped() {

@@ -127,7 +127,7 @@ public class Form extends Screen {
                     if (j > 0) sb.append(",");
                     sb.append(cg.isSelected(j) ? "1" : "0");
                 }
-                NativeBridge.formAddTextField(item.getItemLabel(), sb.toString(), cg.choiceType, cg.choiceType);
+                NativeBridge.formAddTextField(item.getItemLabel(), sb.toString(), 2, cg.choiceType);
             } else {
                 // Fallback: show as string
                 NativeBridge.formAddStringItem(item.getItemLabel(), item.getItemText(), 0);
@@ -137,6 +137,10 @@ public class Form extends Screen {
         ArrayList<Command> cmds = getCommands();
         for (int i = 0; i < cmds.size(); i++) {
             Command c = cmds.get(i);
+            String lbl = c.getLabel() != null ? c.getLabel().toLowerCase() : "";
+            if (cmds.size() > 1 && (lbl.indexOf("mrquyet") >= 0 || lbl.indexOf("mr.quyet") >= 0)) {
+                continue;
+            }
             NativeBridge.formAddCommand(c.getLabel(), c.getCommandType(), c.getPriority(), i);
         }
         NativeBridge.formShow();
