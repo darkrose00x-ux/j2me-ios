@@ -14,11 +14,7 @@ concurrency:
 
 jobs:
   build-ipa:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-14, macos-15-intel, macos-15]
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15-intel
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -65,7 +61,7 @@ jobs:
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: J2ME-Decade-IPA-${{ matrix.runner }}
+          name: J2ME-Decade-IPA
           path: J2ME-Decade.ipa
           retention-days: 14
 
