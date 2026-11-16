@@ -245,35 +245,37 @@ class FormView: UIView, UITextFieldDelegate {
 
     private func setup() {
         overrideUserInterfaceStyle = .light
-        backgroundColor = UIColor(red: 0.96, green: 0.97, blue: 0.98, alpha: 1.0)
+        backgroundColor = .white
 
         // Dismiss keyboard when tapping on background
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tapGesture.cancelsTouchesInView = false
         addGestureRecognizer(tapGesture)
 
+        scrollView.backgroundColor = .white
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
 
         stackView.axis = .vertical
-        stackView.spacing = 14
+        stackView.spacing = 10
         stackView.alignment = .fill
-        stackView.layoutMargins = UIEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+        stackView.layoutMargins = UIEdgeInsets(top: 10, left: 12, bottom: 14, right: 12)
         stackView.isLayoutMarginsRelativeArrangement = true
         stackView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(stackView)
 
         commandBar.axis = .horizontal
         commandBar.spacing = 10
-        commandBar.distribution = .fillEqually
-        commandBar.backgroundColor = UIColor(red: 0.96, green: 0.96, blue: 0.98, alpha: 1.0)
-        commandBar.layoutMargins = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        commandBar.distribution = .equalSpacing
+        commandBar.alignment = .center
+        commandBar.backgroundColor = .white
+        commandBar.layoutMargins = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
         commandBar.isLayoutMarginsRelativeArrangement = true
         commandBar.translatesAutoresizingMaskIntoConstraints = false
         addSubview(commandBar)
 
         let separator = UIView()
-        separator.backgroundColor = UIColor(white: 0.85, alpha: 1.0)
+        separator.backgroundColor = UIColor(white: 0.90, alpha: 1.0)
         separator.translatesAutoresizingMaskIntoConstraints = false
         addSubview(separator)
 
@@ -297,11 +299,22 @@ class FormView: UIView, UITextFieldDelegate {
             commandBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             commandBar.trailingAnchor.constraint(equalTo: trailingAnchor),
             commandBar.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
-            commandBar.heightAnchor.constraint(equalToConstant: 48),
+            commandBar.heightAnchor.constraint(equalToConstant: 44),
         ])
     }
 
     private var commands: [(label: String, id: Int32, type: Int32)] = []
+
+    private static func isExitCommandLabel(_ label: String) -> Bool {
+        let l = label.lowercased()
+        return l.contains("thoát") || l.contains("quay lại") || l.contains("hủy") ||
+               l.contains("đóng") || l.contains("back") || l.contains("cancel") || l.contains("exit")
+    }
+
+    private static func isInjectedModMenuCommand(_ label: String) -> Bool {
+        let l = label.lowercased()
+        return l.contains("mrquyet") || l.contains("mr.quyet") || l.contains("menu mr")
+    }
 
     func buildFromNativeData() {
         stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -335,30 +348,43 @@ class FormView: UIView, UITextFieldDelegate {
             commands.append((label: cmdLabel, id: cmdId, type: cmdType))
         }
 
-        if commands.isEmpty {
-            // Default Cancel/Back
-            let rightBtn = makeRedButton(title: "QUAY LẠI", tag: 0)
-            commandBar.addArrangedSubview(UIView()) // spacer
+        // Filter out injected wrapper command ("Menu Mr.Quyet") when the Form has its own commands (e.g., "Lưu", "Thoát")
+        let nonModCommands = commands.filter { !Self.isInjectedModMenuCommand($0.label) }
+        let displayCommands = !nonModCommands.isEmpty ? nonModCommands : commands
+
+        if displayCommands.isEmpty {
+            let rightBtn = makeRedButton(title: "THOÁT", tag: 0)
+            commandBar.addArrangedSubview(UIView())
             commandBar.addArrangedSubview(rightBtn)
-        } else if commands.count <= 2 {
-            let leftBtn = makeRedButton(title: commands[0].label.uppercased(), tag: Int(commands[0].id))
-            commandBar.addArrangedSubview(leftBtn)
-            if commands.count == 2 {
-                commandBar.addArrangedSubview(UIView()) // spacer
-                let rightBtn = makeRedButton(title: commands[1].label.uppercased(), tag: Int(commands[1].id))
-                commandBar.addArrangedSubview(rightBtn)
+        } else if displayCommands.count == 1 {
+            let cmd = displayCommands[0]
+            let btn = makeRedButton(title: cmd.label.uppercased(), tag: Int(cmd.id))
+            if Self.isExitCommandLabel(cmd.label) || cmd.type == 2 || cmd.type == 7 {
+                commandBar.addArrangedSubview(UIView())
+                commandBar.addArrangedSubview(btn)
+            } else {
+                commandBar.addArrangedSubview(btn)
+                commandBar.addArrangedSubview(UIView())
             }
+        } else if displayCommands.count == 2 {
+            // Ensure primary/save action ("LƯU" / "OK") is on the left and exit/back ("THOÁT") is on the right
+            let firstIsExit = Self.isExitCommandLabel(displayCommands[0].label) && !Self.isExitCommandLabel(displayCommands[1].label)
+            let leftCmd = firstIsExit ? displayCommands[1] : displayCommands[0]
+            let rightCmd = firstIsExit ? displayCommands[0] : displayCommands[1]
+
+            let leftBtn = makeRedButton(title: leftCmd.label.uppercased(), tag: Int(leftCmd.id))
+            let rightBtn = makeRedButton(title: rightCmd.label.uppercased(), tag: Int(rightCmd.id))
+            commandBar.addArrangedSubview(leftBtn)
+            commandBar.addArrangedSubview(rightBtn)
         } else {
-            // > 2 commands: Left is MENU, Right is Back/Exit command
+            // > 2 commands: Left is MENU, Right is Back/Exit command (prioritizing explicit exit labels over type)
             let menuBtn = makeRedButton(title: "MENU", tag: -1)
             menuBtn.addTarget(self, action: #selector(showFormMenu(_:)), for: .touchUpInside)
             commandBar.addArrangedSubview(menuBtn)
-            commandBar.addArrangedSubview(UIView()) // spacer
 
-            let exitCmd = commands.first {
-                let l = $0.label.lowercased()
-                return $0.type == 7 || $0.type == 2 || l.contains("thoát") || l.contains("quay lại") || l.contains("back") || l.contains("hủy")
-            } ?? commands.last!
+            let exitCmd = displayCommands.first { Self.isExitCommandLabel($0.label) }
+                ?? displayCommands.first { $0.type == 2 || $0.type == 3 || $0.type == 7 }
+                ?? displayCommands.last!
             let rightBtn = makeRedButton(title: exitCmd.label.uppercased(), tag: Int(exitCmd.id))
             commandBar.addArrangedSubview(rightBtn)
         }
@@ -367,7 +393,7 @@ class FormView: UIView, UITextFieldDelegate {
     private func makeRedButton(title: String, tag: Int) -> UIButton {
         let btn = UIButton(type: .system)
         btn.setTitle(title, for: .normal)
-        btn.titleLabel?.font = .systemFont(ofSize: 16, weight: .bold)
+        btn.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
         btn.setTitleColor(UIColor(red: 0.90, green: 0.22, blue: 0.21, alpha: 1.0), for: .normal)
         btn.tag = tag
         if tag >= 0 {
@@ -394,69 +420,43 @@ class FormView: UIView, UITextFieldDelegate {
     }
 
     private func addStringItem(label: String, text: String) {
-        let card = UIView()
-        card.backgroundColor = .white
-        card.layer.cornerRadius = 10
-        card.layer.borderWidth = 1
-        card.layer.borderColor = UIColor(white: 0.88, alpha: 1.0).cgColor
-        card.translatesAutoresizingMaskIntoConstraints = false
-
         let container = UIStackView()
         container.axis = .vertical
-        container.spacing = 6
-        container.layoutMargins = UIEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
-        container.isLayoutMarginsRelativeArrangement = true
+        container.spacing = 4
         container.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(container)
 
         if !label.isEmpty {
             let labelView = UILabel()
             labelView.text = label
-            labelView.font = .boldSystemFont(ofSize: 14)
-            labelView.textColor = UIColor(red: 0.12, green: 0.45, blue: 0.90, alpha: 1.0)
+            labelView.font = .systemFont(ofSize: 17, weight: .regular)
+            labelView.textColor = UIColor(white: 0.10, alpha: 1.0)
+            labelView.numberOfLines = 0
             container.addArrangedSubview(labelView)
         }
 
         if !text.isEmpty {
             let textView = UILabel()
             textView.text = text
-            textView.font = .systemFont(ofSize: 15)
-            textView.textColor = UIColor(red: 0.15, green: 0.15, blue: 0.18, alpha: 1.0)
+            textView.font = .systemFont(ofSize: 15, weight: .regular)
+            textView.textColor = UIColor(white: 0.20, alpha: 1.0)
             textView.numberOfLines = 0
             container.addArrangedSubview(textView)
         }
 
-        NSLayoutConstraint.activate([
-            container.topAnchor.constraint(equalTo: card.topAnchor),
-            container.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            container.bottomAnchor.constraint(equalTo: card.bottomAnchor),
-        ])
-
-        stackView.addArrangedSubview(card)
+        stackView.addArrangedSubview(container)
     }
 
     private func addTextField(label: String, text: String, index: Int) {
-        let card = UIView()
-        card.backgroundColor = .white
-        card.layer.cornerRadius = 10
-        card.layer.borderWidth = 1
-        card.layer.borderColor = UIColor(white: 0.88, alpha: 1.0).cgColor
-        card.translatesAutoresizingMaskIntoConstraints = false
-
         let container = UIStackView()
         container.axis = .vertical
-        container.spacing = 6
-        container.layoutMargins = UIEdgeInsets(top: 10, left: 14, bottom: 12, right: 14)
-        container.isLayoutMarginsRelativeArrangement = true
+        container.spacing = 2
         container.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(container)
 
         if !label.isEmpty {
             let labelView = UILabel()
             labelView.text = label
-            labelView.font = .boldSystemFont(ofSize: 14)
-            labelView.textColor = UIColor(red: 0.12, green: 0.15, blue: 0.20, alpha: 1.0)
+            labelView.font = .systemFont(ofSize: 17, weight: .regular)
+            labelView.textColor = UIColor(white: 0.10, alpha: 1.0)
             container.addArrangedSubview(labelView)
         }
 
@@ -464,18 +464,20 @@ class FormView: UIView, UITextFieldDelegate {
         tf.tag = index
         tf.text = text
         tf.borderStyle = .none
-        tf.font = .systemFont(ofSize: 16)
-        tf.textColor = .black
-        tf.backgroundColor = UIColor(white: 0.96, alpha: 1.0)
-        tf.layer.cornerRadius = 8
-        tf.layer.borderWidth = 1
-        tf.layer.borderColor = UIColor(white: 0.85, alpha: 1.0).cgColor
+        tf.font = .systemFont(ofSize: 16, weight: .regular)
+        tf.textColor = UIColor(white: 0.10, alpha: 1.0)
+        tf.backgroundColor = .clear
         tf.returnKeyType = .done
         tf.delegate = self
         tf.translatesAutoresizingMaskIntoConstraints = false
-        tf.heightAnchor.constraint(equalToConstant: 42).isActive = true
+        tf.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
-        let paddingView = UIView(frame: CGRect(x: 0, y: 0, width: 10, height: 42))
+        let constraints = j2me_ui_get_form_item_param2(Int32(index))
+        if (constraints & 0xFFFF) == 2 || (constraints & 0xFFFF) == 5 {
+            tf.keyboardType = .numbersAndPunctuation
+        }
+
+        let paddingView = UIView(frame: CGRect(x: 0, y: 0, width: 4, height: 32))
         tf.leftView = paddingView
         tf.leftViewMode = .always
 
@@ -490,37 +492,27 @@ class FormView: UIView, UITextFieldDelegate {
         tf.addTarget(self, action: #selector(textFieldChanged(_:)), for: .editingChanged)
         container.addArrangedSubview(tf)
 
-        NSLayoutConstraint.activate([
-            container.topAnchor.constraint(equalTo: card.topAnchor),
-            container.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            container.bottomAnchor.constraint(equalTo: card.bottomAnchor),
-        ])
+        // Authentic Android bottom underline
+        let underline = UIView()
+        underline.backgroundColor = UIColor(white: 0.45, alpha: 1.0)
+        underline.translatesAutoresizingMaskIntoConstraints = false
+        underline.heightAnchor.constraint(equalToConstant: 1.0).isActive = true
+        container.addArrangedSubview(underline)
 
-        stackView.addArrangedSubview(card)
+        stackView.addArrangedSubview(container)
     }
 
     private func addChoiceGroup(label: String, text: String, index: Int) {
-        let card = UIView()
-        card.backgroundColor = .white
-        card.layer.cornerRadius = 10
-        card.layer.borderWidth = 1
-        card.layer.borderColor = UIColor(white: 0.88, alpha: 1.0).cgColor
-        card.translatesAutoresizingMaskIntoConstraints = false
-
         let container = UIStackView()
         container.axis = .vertical
-        container.spacing = 8
-        container.layoutMargins = UIEdgeInsets(top: 10, left: 14, bottom: 12, right: 14)
-        container.isLayoutMarginsRelativeArrangement = true
+        container.spacing = 6
         container.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(container)
 
         if !label.isEmpty {
             let labelView = UILabel()
             labelView.text = label
-            labelView.font = .boldSystemFont(ofSize: 15)
-            labelView.textColor = UIColor(red: 0.12, green: 0.15, blue: 0.20, alpha: 1.0)
+            labelView.font = .systemFont(ofSize: 17, weight: .regular)
+            labelView.textColor = UIColor(white: 0.10, alpha: 1.0)
             container.addArrangedSubview(labelView)
         }
 
@@ -533,81 +525,101 @@ class FormView: UIView, UITextFieldDelegate {
             flags = parts[2].components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "1" }
         }
 
-        // ChoiceGroup choiceType was passed in param2 (maxSize was param1)
-        let choiceType = j2me_ui_get_form_item_param2(Int32(index)) // 1=EXCLUSIVE, 2=MULTIPLE, 4=POPUP
+        // ChoiceGroup choiceType was passed in param2 (1=EXCLUSIVE, 2=MULTIPLE, 4=POPUP)
+        let choiceType = j2me_ui_get_form_item_param2(Int32(index))
+        let isMultiple = (choiceType == 2)
 
-        if (choiceType == 1 || choiceType == 4) && options.count > 0 && options.count <= 3 {
-            // Segmented control for 2-3 options
-            let seg = UISegmentedControl(items: options)
-            seg.selectedSegmentIndex = max(0, min(selectedIdx, options.count - 1))
-            seg.tag = index
-            seg.addTarget(self, action: #selector(choiceSegmentChanged(_:)), for: .valueChanged)
-            container.addArrangedSubview(seg)
-        } else {
-            // List of checkable / selectable rows
-            for (optIdx, optTitle) in options.enumerated() {
-                let row = UIStackView()
-                row.axis = .horizontal
-                row.spacing = 10
-                row.alignment = .center
-
-                let optLabel = UILabel()
-                optLabel.text = optTitle
-                optLabel.font = .systemFont(ofSize: 15)
-                optLabel.textColor = UIColor(red: 0.20, green: 0.20, blue: 0.22, alpha: 1.0)
-                row.addArrangedSubview(optLabel)
-
-                let isSelected = choiceType == 2 ? (optIdx < flags.count ? flags[optIdx] : false) : (optIdx == selectedIdx)
-                let checkBtn = UIButton(type: .custom)
-                checkBtn.tag = index * 1000 + optIdx
-                checkBtn.layer.cornerRadius = 6
-                checkBtn.layer.borderWidth = 1.5
-                checkBtn.translatesAutoresizingMaskIntoConstraints = false
-                checkBtn.widthAnchor.constraint(equalToConstant: 24).isActive = true
-                checkBtn.heightAnchor.constraint(equalToConstant: 24).isActive = true
-
-                applyCheckboxStyle(checkBtn, isChecked: isSelected)
-                checkBtn.addTarget(self, action: #selector(choiceRowTapped(_:)), for: .touchUpInside)
-                row.addArrangedSubview(checkBtn)
-
-                container.addArrangedSubview(row)
+        for (optIdx, optTitle) in options.enumerated() {
+            let isSelected: Bool
+            if isMultiple {
+                isSelected = (optIdx < flags.count) ? flags[optIdx] : false
+            } else {
+                isSelected = (optIdx == selectedIdx) || (selectedIdx < 0 && optIdx < flags.count && flags[optIdx])
             }
+
+            let rowBtn = UIButton(type: .custom)
+            rowBtn.tag = index * 1000 + optIdx
+            rowBtn.backgroundColor = .clear
+            rowBtn.translatesAutoresizingMaskIntoConstraints = false
+            rowBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
+            rowBtn.addTarget(self, action: #selector(choiceRowTapped(_:)), for: .touchUpInside)
+
+            let indicator = UIView()
+            indicator.isUserInteractionEnabled = false
+            indicator.translatesAutoresizingMaskIntoConstraints = false
+            rowBtn.addSubview(indicator)
+
+            let optLabel = UILabel()
+            optLabel.text = optTitle
+            optLabel.font = .systemFont(ofSize: 15, weight: .regular)
+            optLabel.textColor = UIColor(white: 0.10, alpha: 1.0)
+            optLabel.isUserInteractionEnabled = false
+            optLabel.translatesAutoresizingMaskIntoConstraints = false
+            rowBtn.addSubview(optLabel)
+
+            NSLayoutConstraint.activate([
+                indicator.leadingAnchor.constraint(equalTo: rowBtn.leadingAnchor, constant: 6),
+                indicator.centerYAnchor.constraint(equalTo: rowBtn.centerYAnchor),
+                indicator.widthAnchor.constraint(equalToConstant: 20),
+                indicator.heightAnchor.constraint(equalToConstant: 20),
+
+                optLabel.leadingAnchor.constraint(equalTo: indicator.trailingAnchor, constant: 10),
+                optLabel.trailingAnchor.constraint(lessThanOrEqualTo: rowBtn.trailingAnchor, constant: -4),
+                optLabel.centerYAnchor.constraint(equalTo: rowBtn.centerYAnchor),
+            ])
+
+            let accentColor = UIColor(red: 0.96, green: 0.22, blue: 0.36, alpha: 1.0)
+            let uncheckedBorderColor = UIColor(white: 0.45, alpha: 1.0)
+
+            if isMultiple {
+                // Square Checkbox on the left (matching Android Decade CheckBox)
+                indicator.layer.cornerRadius = 2.5
+                indicator.layer.borderWidth = 2.0
+                if isSelected {
+                    indicator.backgroundColor = accentColor
+                    indicator.layer.borderColor = accentColor.cgColor
+                    let checkLbl = UILabel()
+                    checkLbl.text = "✓"
+                    checkLbl.font = .systemFont(ofSize: 13, weight: .bold)
+                    checkLbl.textColor = .white
+                    checkLbl.textAlignment = .center
+                    checkLbl.translatesAutoresizingMaskIntoConstraints = false
+                    indicator.addSubview(checkLbl)
+                    NSLayoutConstraint.activate([
+                        checkLbl.centerXAnchor.constraint(equalTo: indicator.centerXAnchor),
+                        checkLbl.centerYAnchor.constraint(equalTo: indicator.centerYAnchor),
+                    ])
+                } else {
+                    indicator.backgroundColor = .white
+                    indicator.layer.borderColor = uncheckedBorderColor.cgColor
+                }
+            } else {
+                // Circular Radio Button on the left (matching Android Decade RadioButton)
+                indicator.backgroundColor = .white
+                indicator.layer.cornerRadius = 10
+                indicator.layer.borderWidth = 2.0
+                indicator.layer.borderColor = isSelected ? accentColor.cgColor : uncheckedBorderColor.cgColor
+
+                if isSelected {
+                    let innerDot = UIView()
+                    innerDot.backgroundColor = accentColor
+                    innerDot.layer.cornerRadius = 5
+                    innerDot.isUserInteractionEnabled = false
+                    innerDot.translatesAutoresizingMaskIntoConstraints = false
+                    indicator.addSubview(innerDot)
+                    NSLayoutConstraint.activate([
+                        innerDot.centerXAnchor.constraint(equalTo: indicator.centerXAnchor),
+                        innerDot.centerYAnchor.constraint(equalTo: indicator.centerYAnchor),
+                        innerDot.widthAnchor.constraint(equalToConstant: 10),
+                        innerDot.heightAnchor.constraint(equalToConstant: 10),
+                    ])
+                }
+            }
+
+            container.addArrangedSubview(rowBtn)
         }
 
-        NSLayoutConstraint.activate([
-            container.topAnchor.constraint(equalTo: card.topAnchor),
-            container.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            container.bottomAnchor.constraint(equalTo: card.bottomAnchor),
-        ])
-
-        stackView.addArrangedSubview(card)
-    }
-
-    private func applyCheckboxStyle(_ btn: UIButton, isChecked: Bool) {
-        if isChecked {
-            btn.backgroundColor = UIColor(red: 0.90, green: 0.22, blue: 0.21, alpha: 1.0)
-            btn.layer.borderColor = UIColor(red: 0.90, green: 0.22, blue: 0.21, alpha: 1.0).cgColor
-            btn.setTitle("✓", for: .normal)
-            btn.setTitleColor(.white, for: .normal)
-            btn.titleLabel?.font = .systemFont(ofSize: 14, weight: .bold)
-        } else {
-            btn.backgroundColor = .white
-            btn.layer.borderColor = UIColor(white: 0.75, alpha: 1.0).cgColor
-            btn.setTitle("", for: .normal)
-        }
-    }
-
-    @objc private func choiceSegmentChanged(_ sender: UISegmentedControl) {
-        let itemIndex = sender.tag
-        let raw = String(cString: j2me_ui_get_form_item_text(Int32(itemIndex)))
-        var parts = raw.components(separatedBy: "\n")
-        if parts.isEmpty { parts = ["0", "", ""] }
-        parts[0] = "\(sender.selectedSegmentIndex)"
-        let updated = parts.joined(separator: "\n")
-        updated.withCString { cstr in
-            j2me_ui_set_form_item_text(Int32(itemIndex), cstr)
-        }
+        stackView.addArrangedSubview(container)
     }
 
     @objc private func choiceRowTapped(_ sender: UIButton) {
@@ -618,7 +630,7 @@ class FormView: UIView, UITextFieldDelegate {
         while parts.count < 3 { parts.append("") }
 
         let choiceType = j2me_ui_get_form_item_param2(Int32(itemIndex))
-        let options = parts[1].components(separatedBy: "\t")
+        let options = parts[1].components(separatedBy: "\t").filter { !$0.isEmpty }
         var flags = parts[2].components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "1" }
         while flags.count < options.count { flags.append(false) }
 
@@ -628,17 +640,24 @@ class FormView: UIView, UITextFieldDelegate {
                 flags[optIndex].toggle()
             }
             parts[2] = flags.map { $0 ? "1" : "0" }.joined(separator: ",")
-            applyCheckboxStyle(sender, isChecked: flags[optIndex])
         } else {
-            // EXCLUSIVE: select single
+            // EXCLUSIVE / POPUP: select single option and update both selectedIndex and flags
             parts[0] = "\(optIndex)"
-            buildFromNativeData() // Re-render card with updated radio state
+            for i in 0..<flags.count {
+                flags[i] = (i == optIndex)
+            }
+            parts[2] = flags.map { $0 ? "1" : "0" }.joined(separator: ",")
         }
 
         let updated = parts.joined(separator: "\n")
         updated.withCString { cstr in
             j2me_ui_set_form_item_text(Int32(itemIndex), cstr)
         }
+
+        let savedOffset = scrollView.contentOffset
+        buildFromNativeData()
+        layoutIfNeeded()
+        scrollView.setContentOffset(savedOffset, animated: false)
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
@@ -779,7 +798,9 @@ class J2MEListView: UIView, UITableViewDataSource, UITableViewDelegate {
 
             let exitCmd = commands.first {
                 let l = $0.label.lowercased()
-                return $0.type == 7 || $0.type == 2 || l.contains("thoát") || l.contains("back") || l.contains("quay lại")
+                return l.contains("thoát") || l.contains("back") || l.contains("quay lại") || l.contains("hủy") || l.contains("đóng")
+            } ?? commands.first {
+                $0.type == 2 || $0.type == 3 || $0.type == 7
             } ?? commands.last!
             let exitBtn = makeRedButton(title: exitCmd.label.uppercased(), tag: Int(exitCmd.id))
             bottomButtonBar.addArrangedSubview(exitBtn)

@@ -44,6 +44,11 @@ public class TextBox extends Screen {
     public int getCaretPosition() { return text != null ? text.length() : 0; }
     public void setInitialInputMode(String characterSubset) { }
 
+    @Override
+    protected void onCommandsChanged() {
+        showNative();
+    }
+
     /** Show native Decade TextBox UI */
     public void showNative() {
         NativeBridge.setTextBoxText(text != null ? text : "");

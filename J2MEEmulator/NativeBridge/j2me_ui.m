@@ -183,7 +183,6 @@ static s32 n_formAddTextField(Runtime *runtime, JClass *clazz) {
 
     if (g_form_item_count >= MAX_FORM_ITEMS) return RUNTIME_STATUS_NORMAL;
     FormItem *item = &g_form_items[g_form_item_count++];
-    item->type = (maxSize == 2) ? 2 : 1; // 2=choicegroup, 1=textfield
     item->intParam1 = maxSize;
     item->intParam2 = constraints;
     item->label[0] = '\0';
@@ -204,6 +203,12 @@ static s32 n_formAddTextField(Runtime *runtime, JClass *clazz) {
             g_textbox_text[sizeof(g_textbox_text) - 1] = '\0';
         }
         utf8_destroy(u);
+    }
+    // ChoiceGroup passes Choice.EXCLUSIVE(1), MULTIPLE(2), or POPUP(4) with serialized multiline text
+    if (g_form_type == 0 && (maxSize == 1 || maxSize == 2 || maxSize == 4) && strchr(item->text, '\n') != NULL) {
+        item->type = 2; // 2=choicegroup
+    } else {
+        item->type = 1; // 1=textfield
     }
     return RUNTIME_STATUS_NORMAL;
 }

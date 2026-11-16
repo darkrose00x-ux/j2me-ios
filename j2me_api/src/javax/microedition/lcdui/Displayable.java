@@ -20,10 +20,19 @@ public abstract class Displayable {
     public int getHeight() { return height; }
 
     public void addCommand(Command cmd) {
-        if (cmd != null && !commands.contains(cmd)) commands.add(cmd);
+        if (cmd != null && !commands.contains(cmd)) {
+            commands.add(cmd);
+            if (isShown()) onCommandsChanged();
+        }
     }
 
-    public void removeCommand(Command cmd) { commands.remove(cmd); }
+    public void removeCommand(Command cmd) {
+        if (commands.remove(cmd)) {
+            if (isShown()) onCommandsChanged();
+        }
+    }
+
+    protected void onCommandsChanged() { }
 
     public void setCommandListener(CommandListener listener) {
         this.commandListener = listener;

@@ -48,6 +48,21 @@ class DecadeKeypadView: UIView, UIGestureRecognizerDelegate {
         }
     }
 
+    var isLandscapeMode: Bool = false {
+        didSet {
+            guard oldValue != isLandscapeMode else { return }
+            if isLandscapeMode {
+                backgroundColor = .clear
+                layer.cornerRadius = 0
+            } else {
+                backgroundColor = UIColor(red: 0.925, green: 0.937, blue: 0.953, alpha: 1.0)
+                layer.cornerRadius = 16
+                layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+            }
+            rebuildKeypad()
+        }
+    }
+
     var showDiagonalKeys: Bool = true {
         didSet { rebuildKeypad() }
     }
@@ -124,6 +139,31 @@ class DecadeKeypadView: UIView, UIGestureRecognizerDelegate {
         applyButtonPositions()
     }
 
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        if isLandscapeMode && !isEditLayoutMode && !isResizeLayoutMode {
+            let pt = convert(point, to: containerView)
+            for btn in buttons where !btn.isHidden && btn.alpha > 0.01 {
+                if btn.frame.contains(pt) {
+                    return true
+                }
+            }
+            return false
+        }
+        return super.point(inside: point, with: event)
+    }
+
+    func computeLandscapeWingWidth(for totalSize: CGSize) -> CGFloat {
+        let h = max(180, totalSize.height)
+        let w = max(400, totalSize.width)
+        let topY = h * 0.20
+        let bottomPad: CGFloat = 8
+        let gridH = max(120, h - topY - bottomPad)
+        let spacing: CGFloat = 4
+        let cellH = (gridH - 3 * spacing) / 4
+        let cellW = min(cellH * 1.05, (w * 0.24 - 16) / 3)
+        return 3 * cellW + 2 * spacing + 14
+    }
+
     // ============================================================
     // MARK: - Rebuild Keypad
     // ============================================================
@@ -132,64 +172,18 @@ class DecadeKeypadView: UIView, UIGestureRecognizerDelegate {
         buttons.forEach { $0.removeFromSuperview() }
         buttons.removeAll()
 
-        let glyphColor = UIColor(red: 0.43, green: 0.49, blue: 0.66, alpha: 1.0)
+        let glyphColor = isLandscapeMode
+            ? UIColor(red: 0.0, green: 0.08, blue: 0.50, alpha: 1.0)
+            : UIColor(red: 0.43, green: 0.49, blue: 0.66, alpha: 1.0)
 
         let items: [(title: String, c1: Int32, c2: Int32, defaultCol: Int, defaultRow: Int, totalCols: Int, totalRows: Int)]
 
-        switch currentLayout {
-        case .arrows:
-            // Layout 1: Decade Mũi tên (Arrows - Pure Navigation, NO NUMBERS)
-            // User requested: '*' and '#' at the two corners in Row 2!
-            // Row 0: [ L ]  [ ↖ ]  [ ↑ ]  [ ↗ ]  [ R ]
-            // Row 1: [   ]  [ ← ]  [ F ]  [ → ]  [   ]
-            // Row 2: [ * ]  [ ↙ ]  [ ↓ ]  [ ↘ ]  [ # ]
-            let upLeftCodes: (Int32, Int32) = showDiagonalKeys ? (-1, -3) : (0, 0)
-            let upRightCodes: (Int32, Int32) = showDiagonalKeys ? (-1, -4) : (0, 0)
-            let downLeftCodes: (Int32, Int32) = showDiagonalKeys ? (-2, -3) : (0, 0)
-            let downRightCodes: (Int32, Int32) = showDiagonalKeys ? (-2, -4) : (0, 0)
-            let soft1Code: Int32 = showSoftKeys ? -6 : 0
-            let soft2Code: Int32 = showSoftKeys ? -7 : 0
-            let fireCode: Int32 = showFireKey ? -5 : 0
-
-            var list: [(String, Int32, Int32, Int, Int, Int, Int)] = []
-            if showSoftKeys {
-                list.append(("L", soft1Code, 0, 0, 0, 5, 3))
-                list.append(("R", soft2Code, 0, 4, 0, 5, 3))
-            }
-            if showDiagonalKeys {
-                list.append(("↖", upLeftCodes.0, upLeftCodes.1, 1, 0, 5, 3))
-                list.append(("↗", upRightCodes.0, upRightCodes.1, 3, 0, 5, 3))
-                list.append(("↙", downLeftCodes.0, downLeftCodes.1, 1, 2, 5, 3))
-                list.append(("↘", downRightCodes.0, downRightCodes.1, 3, 2, 5, 3))
-            }
-            list.append(("↑", -1, 0, 2, 0, 5, 3))
-            list.append(("←", -3, 0, 1, 1, 5, 3))
-            if showFireKey {
-                list.append(("F", fireCode, 0, 2, 1, 5, 3))
-            }
-            list.append(("→", -4, 0, 3, 1, 5, 3))
-            list.append(("↓", -2, 0, 2, 2, 5, 3))
-
-            // * and # at corners of Row 2:
-            list.append(("*", 42, 0, 0, 2, 5, 3))
-            list.append(("#", 35, 0, 4, 2, 5, 3))
-
-            // Numbers 1-0: Available if unhidden in "Ẩn nút" dialog
-            let numbers: [(String, Int32, Int, Int)] = [
-                ("1", 49, 0, 0), ("2", 50, 1, 0), ("3", 51, 2, 0),
-                ("4", 52, 0, 1), ("5", 53, 1, 1), ("6", 54, 2, 1),
-                ("7", 55, 0, 2), ("8", 56, 1, 2), ("9", 57, 2, 2),
-                ("0", 48, 1, 2)
-            ]
-            for num in numbers {
-                list.append((num.0, num.1, 0, num.2, num.3, 5, 3))
-            }
-
-            items = list
-
-        case .numpad:
-            // Layout 2: Phone Numpad
+        if isLandscapeMode {
+            // Authentic Android Decade Landscape Split Keypad:
+            // Left Wing (defaultCol 0..2): 3x4 Numpad (1-9, *, 0, #)
+            // Right Wing (defaultCol 10..12): 3x4 D-Pad + Softkeys (L, R, ↖ ↑ ↗, ← F →, ↙ ↓ ↘)
             items = [
+                // Left 3x4 Numpad
                 ("1", 49, 0, 0, 0, 3, 4),
                 ("2", 50, 0, 1, 0, 3, 4),
                 ("3", 51, 0, 2, 0, 3, 4),
@@ -202,29 +196,111 @@ class DecadeKeypadView: UIView, UIGestureRecognizerDelegate {
                 ("*", 42, 0, 0, 3, 3, 4),
                 ("0", 48, 0, 1, 3, 3, 4),
                 ("#", 35, 0, 2, 3, 3, 4),
+
+                // Right 3x4 D-Pad & Softkeys
+                ("L", -6, 0, 10, 0, 3, 4),
+                ("R", -7, 0, 12, 0, 3, 4),
+                ("↖", -1, -3, 10, 1, 3, 4),
+                ("↑", -1, 0, 11, 1, 3, 4),
+                ("↗", -1, -4, 12, 1, 3, 4),
+                ("←", -3, 0, 10, 2, 3, 4),
+                ("F", -5, 0, 11, 2, 3, 4),
+                ("→", -4, 0, 12, 2, 3, 4),
+                ("↙", -2, -3, 10, 3, 3, 4),
+                ("↓", -2, 0, 11, 3, 3, 4),
+                ("↘", -2, -4, 12, 3, 3, 4),
             ]
+        } else {
+            switch currentLayout {
+            case .arrows:
+                // Layout 1: Decade Mũi tên (Arrows - Pure Navigation, NO NUMBERS)
+                // User requested: '*' and '#' at the two corners in Row 2!
+                // Row 0: [ L ]  [ ↖ ]  [ ↑ ]  [ ↗ ]  [ R ]
+                // Row 1: [   ]  [ ← ]  [ F ]  [ → ]  [   ]
+                // Row 2: [ * ]  [ ↙ ]  [ ↓ ]  [ ↘ ]  [ # ]
+                let upLeftCodes: (Int32, Int32) = showDiagonalKeys ? (-1, -3) : (0, 0)
+                let upRightCodes: (Int32, Int32) = showDiagonalKeys ? (-1, -4) : (0, 0)
+                let downLeftCodes: (Int32, Int32) = showDiagonalKeys ? (-2, -3) : (0, 0)
+                let downRightCodes: (Int32, Int32) = showDiagonalKeys ? (-2, -4) : (0, 0)
+                let soft1Code: Int32 = showSoftKeys ? -6 : 0
+                let soft2Code: Int32 = showSoftKeys ? -7 : 0
+                let fireCode: Int32 = showFireKey ? -5 : 0
 
-        case .combined:
-            // Layout 3: Combined
-            items = [
-                ("1", 49, 0, 0, 0, 5, 3),
-                ("2", 50, 0, 1, 0, 5, 3),
-                ("3", 51, 0, 2, 0, 5, 3),
-                ("↑", -1, 0, 3, 0, 5, 3),
-                ("L", -6, 0, 4, 0, 5, 3),
+                var list: [(String, Int32, Int32, Int, Int, Int, Int)] = []
+                if showSoftKeys {
+                    list.append(("L", soft1Code, 0, 0, 0, 5, 3))
+                    list.append(("R", soft2Code, 0, 4, 0, 5, 3))
+                }
+                if showDiagonalKeys {
+                    list.append(("↖", upLeftCodes.0, upLeftCodes.1, 1, 0, 5, 3))
+                    list.append(("↗", upRightCodes.0, upRightCodes.1, 3, 0, 5, 3))
+                    list.append(("↙", downLeftCodes.0, downLeftCodes.1, 1, 2, 5, 3))
+                    list.append(("↘", downRightCodes.0, downRightCodes.1, 3, 2, 5, 3))
+                }
+                list.append(("↑", -1, 0, 2, 0, 5, 3))
+                list.append(("←", -3, 0, 1, 1, 5, 3))
+                if showFireKey {
+                    list.append(("F", fireCode, 0, 2, 1, 5, 3))
+                }
+                list.append(("→", -4, 0, 3, 1, 5, 3))
+                list.append(("↓", -2, 0, 2, 2, 5, 3))
 
-                ("4", 52, 0, 0, 1, 5, 3),
-                ("5", 53, 0, 1, 1, 5, 3),
-                ("6", 54, 0, 2, 1, 5, 3),
-                ("F", -5, 0, 3, 1, 5, 3),
-                ("R", -7, 0, 4, 1, 5, 3),
+                // * and # at corners of Row 2:
+                list.append(("*", 42, 0, 0, 2, 5, 3))
+                list.append(("#", 35, 0, 4, 2, 5, 3))
 
-                ("7", 55, 0, 0, 2, 5, 3),
-                ("8", 56, 0, 1, 2, 5, 3),
-                ("9", 57, 0, 2, 2, 5, 3),
-                ("↓", -2, 0, 3, 2, 5, 3),
-                ("#", 35, 0, 4, 2, 5, 3),
-            ]
+                // Numbers 1-0: Available if unhidden in "Ẩn nút" dialog
+                let numbers: [(String, Int32, Int, Int)] = [
+                    ("1", 49, 0, 0), ("2", 50, 1, 0), ("3", 51, 2, 0),
+                    ("4", 52, 0, 1), ("5", 53, 1, 1), ("6", 54, 2, 1),
+                    ("7", 55, 0, 2), ("8", 56, 1, 2), ("9", 57, 2, 2),
+                    ("0", 48, 1, 2)
+                ]
+                for num in numbers {
+                    list.append((num.0, num.1, 0, num.2, num.3, 5, 3))
+                }
+
+                items = list
+
+            case .numpad:
+                // Layout 2: Phone Numpad
+                items = [
+                    ("1", 49, 0, 0, 0, 3, 4),
+                    ("2", 50, 0, 1, 0, 3, 4),
+                    ("3", 51, 0, 2, 0, 3, 4),
+                    ("4", 52, 0, 0, 1, 3, 4),
+                    ("5", 53, 0, 1, 1, 3, 4),
+                    ("6", 54, 0, 2, 1, 3, 4),
+                    ("7", 55, 0, 0, 2, 3, 4),
+                    ("8", 56, 0, 1, 2, 3, 4),
+                    ("9", 57, 0, 2, 2, 3, 4),
+                    ("*", 42, 0, 0, 3, 3, 4),
+                    ("0", 48, 0, 1, 3, 3, 4),
+                    ("#", 35, 0, 2, 3, 3, 4),
+                ]
+
+            case .combined:
+                // Layout 3: Combined
+                items = [
+                    ("1", 49, 0, 0, 0, 5, 3),
+                    ("2", 50, 0, 1, 0, 5, 3),
+                    ("3", 51, 0, 2, 0, 5, 3),
+                    ("↑", -1, 0, 3, 0, 5, 3),
+                    ("L", -6, 0, 4, 0, 5, 3),
+
+                    ("4", 52, 0, 0, 1, 5, 3),
+                    ("5", 53, 0, 1, 1, 5, 3),
+                    ("6", 54, 0, 2, 1, 5, 3),
+                    ("F", -5, 0, 3, 1, 5, 3),
+                    ("R", -7, 0, 4, 1, 5, 3),
+
+                    ("7", 55, 0, 0, 2, 5, 3),
+                    ("8", 56, 0, 1, 2, 5, 3),
+                    ("9", 57, 0, 2, 2, 5, 3),
+                    ("↓", -2, 0, 3, 2, 5, 3),
+                    ("#", 35, 0, 4, 2, 5, 3),
+                ]
+            }
         }
 
         for item in items {
@@ -232,12 +308,19 @@ class DecadeKeypadView: UIView, UIGestureRecognizerDelegate {
                                       defaultCol: item.defaultCol, defaultRow: item.defaultRow,
                                       totalCols: item.totalCols, totalRows: item.totalRows)
             btn.setTitle(item.title, for: .normal)
-            btn.titleLabel?.font = .systemFont(ofSize: 20, weight: .semibold)
+            btn.titleLabel?.font = .systemFont(ofSize: isLandscapeMode ? 21 : 20, weight: isLandscapeMode ? .regular : .semibold)
             btn.setTitleColor(glyphColor, for: .normal)
-            btn.backgroundColor = UIColor(white: 1.0, alpha: keypadAlphaValue)
-            btn.layer.cornerRadius = 12
-            btn.layer.borderWidth = 1.0
-            btn.layer.borderColor = UIColor(red: 0.82, green: 0.85, blue: 0.90, alpha: 0.60).cgColor
+            if isLandscapeMode {
+                btn.backgroundColor = UIColor(white: 0.87, alpha: max(0.65, keypadAlphaValue))
+                btn.layer.cornerRadius = 12
+                btn.layer.borderWidth = 1.0
+                btn.layer.borderColor = UIColor(white: 0.96, alpha: 0.85).cgColor
+            } else {
+                btn.backgroundColor = UIColor(white: 1.0, alpha: keypadAlphaValue)
+                btn.layer.cornerRadius = 12
+                btn.layer.borderWidth = 1.0
+                btn.layer.borderColor = UIColor(red: 0.82, green: 0.85, blue: 0.90, alpha: 0.60).cgColor
+            }
 
             btn.layer.shadowColor = UIColor(red: 0.2, green: 0.25, blue: 0.35, alpha: 0.12).cgColor
             btn.layer.shadowOffset = CGSize(width: 0, height: 1.5)
@@ -277,6 +360,31 @@ class DecadeKeypadView: UIView, UIGestureRecognizerDelegate {
         let containerW = containerView.bounds.width
         let containerH = containerView.bounds.height
         guard containerW > 20, containerH > 20 else { return }
+
+        if isLandscapeMode {
+            let topY = containerH * 0.20
+            let bottomPad: CGFloat = 4
+            let gridH = max(120, containerH - topY - bottomPad)
+            let spacing: CGFloat = 4
+            let cellH = (gridH - 3 * spacing) / 4
+            let cellW = min(cellH * 1.05, (containerW * 0.24 - 8) / 3)
+            let rightStartX = containerW - (3 * cellW + 2 * spacing)
+
+            for btn in buttons {
+                let row = CGFloat(btn.defaultRow)
+                let y = topY + row * (cellH + spacing)
+                if btn.defaultCol >= 10 {
+                    let col = CGFloat(btn.defaultCol - 10)
+                    let x = rightStartX + col * (cellW + spacing)
+                    btn.frame = CGRect(x: x, y: y, width: cellW, height: cellH)
+                } else {
+                    let col = CGFloat(btn.defaultCol)
+                    let x = col * (cellW + spacing)
+                    btn.frame = CGRect(x: x, y: y, width: cellW, height: cellH)
+                }
+            }
+            return
+        }
 
         for btn in buttons {
             if let norm = customFrames[btn.keyTitle], norm.count == 4 {
@@ -411,7 +519,7 @@ class DecadeKeypadView: UIView, UIGestureRecognizerDelegate {
 
     private func updateKeysVisibility() {
         for btn in buttons {
-            let isHidden = hiddenKeys.contains(btn.keyTitle)
+            let isHidden = isLandscapeMode ? false : hiddenKeys.contains(btn.keyTitle)
             btn.isHidden = isHidden
             btn.isUserInteractionEnabled = !isHidden
         }

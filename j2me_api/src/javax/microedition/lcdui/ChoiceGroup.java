@@ -15,7 +15,13 @@ public class ChoiceGroup extends Item implements Choice {
             append(stringElements[i], imageElements != null && i < imageElements.length ? imageElements[i] : null);
     }
 
-    public int append(String s, Image img) { strings.add(s); images.add(img); selected.add(Boolean.FALSE); return strings.size()-1; }
+    public int append(String s, Image img) {
+        boolean defSel = (selected.size() == 0 && choiceType != MULTIPLE);
+        strings.add(s);
+        images.add(img);
+        selected.add(defSel);
+        return strings.size() - 1;
+    }
     public void delete(int i) { strings.remove(i); images.remove(i); selected.remove(i); }
     public void deleteAll() { strings.clear(); images.clear(); selected.clear(); }
     public int getSelectedIndex() { for (int i=0;i<selected.size();i++) if (selected.get(i)) return i; return -1; }

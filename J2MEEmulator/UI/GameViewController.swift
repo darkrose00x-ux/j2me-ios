@@ -71,6 +71,10 @@ class GameViewController: UIViewController {
     // Decade UI components
     private var decadeKeypadView: DecadeKeypadView?
     private var keypadHeightConstraint: NSLayoutConstraint?
+    private var portraitLayoutConstraints: [NSLayoutConstraint] = []
+    private var landscapeLayoutConstraints: [NSLayoutConstraint] = []
+    private var landscapeCanvasLeadingConstraint: NSLayoutConstraint?
+    private var landscapeCanvasTrailingConstraint: NSLayoutConstraint?
     private let topToolbar = UIView()
     private let titleLabel = UILabel()
     private let tabStripContainer = UIView()
@@ -367,6 +371,37 @@ class GameViewController: UIViewController {
         let heightConstraint = keypad.heightAnchor.constraint(equalToConstant: keypadCurrentHeight)
         self.keypadHeightConstraint = heightConstraint
 
+        let pConstraints: [NSLayoutConstraint] = [
+            keypad.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            keypad.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            keypad.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            heightConstraint,
+
+            emulatorView.topAnchor.constraint(equalTo: tabStripContainer.bottomAnchor),
+            emulatorView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            emulatorView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            emulatorView.bottomAnchor.constraint(equalTo: keypad.topAnchor),
+        ]
+        self.portraitLayoutConstraints = pConstraints
+
+        let lCanvasLeading = emulatorView.leadingAnchor.constraint(equalTo: keypad.leadingAnchor, constant: 180)
+        let lCanvasTrailing = emulatorView.trailingAnchor.constraint(equalTo: keypad.trailingAnchor, constant: -180)
+        self.landscapeCanvasLeadingConstraint = lCanvasLeading
+        self.landscapeCanvasTrailingConstraint = lCanvasTrailing
+
+        let lConstraints: [NSLayoutConstraint] = [
+            keypad.topAnchor.constraint(equalTo: tabStripContainer.bottomAnchor),
+            keypad.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            keypad.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            keypad.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            emulatorView.topAnchor.constraint(equalTo: tabStripContainer.bottomAnchor),
+            emulatorView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            lCanvasLeading,
+            lCanvasTrailing,
+        ]
+        self.landscapeLayoutConstraints = lConstraints
+
         NSLayoutConstraint.activate([
             // Top Toolbar pinned below Safe Area
             topToolbar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -387,21 +422,9 @@ class GameViewController: UIViewController {
             tabStripContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tabStripContainer.heightAnchor.constraint(equalToConstant: 34),
 
-            // Keypad at bottom
-            keypad.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            keypad.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            keypad.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            heightConstraint,
-
             // Floating unhide keypad button
             floatingShowKeypadBtn.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
             floatingShowKeypadBtn.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -14),
-
-            // Game Canvas fills between Tab Strip and Keypad
-            emulatorView.topAnchor.constraint(equalTo: tabStripContainer.bottomAnchor),
-            emulatorView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            emulatorView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            emulatorView.bottomAnchor.constraint(equalTo: keypad.topAnchor),
 
             // Screen Views fill between Tab Strip and View Bottom
             textBoxView.topAnchor.constraint(equalTo: tabStripContainer.bottomAnchor),
@@ -419,6 +442,7 @@ class GameViewController: UIViewController {
             listView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             listView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        NSLayoutConstraint.activate(pConstraints)
 
         view.bringSubviewToFront(topToolbar)
         view.bringSubviewToFront(tabStripContainer)
@@ -899,19 +923,80 @@ class GameViewController: UIViewController {
 
     private func adjustLayoutForOrientation(isLandscape: Bool) {
         let isForceFullscreen = isForceFullscreenEnabled
-        if isForceFullscreen || isKeypadHidden {
-            keypadHeightConstraint?.constant = 0
-            decadeKeypadView?.isHidden = true
-            floatingShowKeypadBtn.isHidden = isForceFullscreen
+        let hideKeypad = isForceFullscreen || isKeypadHidden
+
+        if isLandscape {
+            // Authentic Android Decade Landscape: #D0D0D0 gray side wings + center canvas
+            view.backgroundColor = UIColor(red: 0.816, green: 0.816, blue: 0.816, alpha: 1.0)
+            NSLayoutConstraint.deactivate(portraitLayoutConstraints)
+            NSLayoutConstraint.activate(landscapeLayoutConstraints)
+
+            decadeKeypadView?.isLandscapeMode = true
+            decadeKeypadView?.isHidden = hideKeypad
+            floatingShowKeypadBtn.isHidden = isForceFullscreen || !isKeypadHidden
+
+            if hideKeypad {
+                landscapeCanvasLeadingConstraint?.constant = 0
+                landscapeCanvasTrailingConstraint?.constant = 0
+                emulatorView.isAspectFit = isForceFullscreen ? false : isAspectFitEnabled
+            } else {
+                let areaW = max(view.bounds.width, view.bounds.height) - view.safeAreaInsets.left - view.safeAreaInsets.right
+                let areaH = max(180, min(view.bounds.width, view.bounds.height) - 78 - view.safeAreaInsets.top)
+                let wingW = decadeKeypadView?.computeLandscapeWingWidth(for: CGSize(width: areaW, height: areaH)) ?? 180
+                landscapeCanvasLeadingConstraint?.constant = wingW
+                landscapeCanvasTrailingConstraint?.constant = -wingW
+                // Fill the ~4:3 center rectangle between Left 3x4 Numpad and Right 3x4 D-Pad with zero black bars
+                emulatorView.isAspectFit = false
+            }
         } else {
-            let targetHeight: CGFloat = isLandscape ? 150 : 245
-            keypadCurrentHeight = targetHeight
-            keypadHeightConstraint?.constant = targetHeight
-            decadeKeypadView?.isHidden = false
-            floatingShowKeypadBtn.isHidden = true
+            // Authentic Android Decade Portrait
+            view.backgroundColor = .black
+            NSLayoutConstraint.deactivate(landscapeLayoutConstraints)
+            NSLayoutConstraint.activate(portraitLayoutConstraints)
+
+            decadeKeypadView?.isLandscapeMode = false
+            emulatorView.isAspectFit = isForceFullscreen ? false : isAspectFitEnabled
+
+            if hideKeypad {
+                keypadHeightConstraint?.constant = 0
+                decadeKeypadView?.isHidden = true
+                floatingShowKeypadBtn.isHidden = isForceFullscreen
+            } else {
+                if keypadCurrentHeight < 200 {
+                    keypadCurrentHeight = 245
+                }
+                keypadHeightConstraint?.constant = keypadCurrentHeight
+                decadeKeypadView?.isHidden = false
+                floatingShowKeypadBtn.isHidden = true
+            }
         }
+
+        if let keypad = decadeKeypadView {
+            view.bringSubviewToFront(keypad)
+        }
+        view.bringSubviewToFront(floatingShowKeypadBtn)
+        for v: UIView in [textBoxView, formView, listView] where !v.isHidden {
+            view.bringSubviewToFront(v)
+        }
+
         view.setNeedsLayout()
         view.layoutIfNeeded()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard layoutMode == .decade else { return }
+        let isLandscape = view.bounds.width > view.bounds.height
+        if isLandscape && !isForceFullscreenEnabled && !isKeypadHidden, let keypad = decadeKeypadView {
+            let areaSize = keypad.bounds.size
+            if areaSize.width > 200 && areaSize.height > 100 {
+                let wingW = keypad.computeLandscapeWingWidth(for: areaSize)
+                if abs((landscapeCanvasLeadingConstraint?.constant ?? 0) - wingW) > 0.5 {
+                    landscapeCanvasLeadingConstraint?.constant = wingW
+                    landscapeCanvasTrailingConstraint?.constant = -wingW
+                }
+            }
+        }
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -919,7 +1004,9 @@ class GameViewController: UIViewController {
         let isLandscape = size.width > size.height
         coordinator.animate(alongsideTransition: { [weak self] _ in
             self?.adjustLayoutForOrientation(isLandscape: isLandscape)
-        }, completion: nil)
+        }, completion: { [weak self] _ in
+            self?.adjustLayoutForOrientation(isLandscape: isLandscape)
+        })
     }
 
     // OLED Pure Black Overlay for authentic "Treo tắt màn"
@@ -1214,14 +1301,11 @@ class GameViewController: UIViewController {
     }
 
     private func updateKeypadVisibility() {
-        decadeKeypadView?.isHidden = isKeypadHidden
-        floatingShowKeypadBtn.isHidden = isForceFullscreenEnabled || !isKeypadHidden
-        keypadHeightConstraint?.constant = isKeypadHidden ? 0 : keypadCurrentHeight
         if #available(iOS 14.0, *) {
             keyboardBtn.menu = buildVirtualKeyboardMenu()
         }
         UIView.animate(withDuration: 0.2) {
-            self.view.layoutIfNeeded()
+            self.adjustLayoutForOrientation(isLandscape: self.isCurrentOrientationLandscape())
         }
     }
 

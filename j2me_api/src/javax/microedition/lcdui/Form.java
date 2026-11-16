@@ -73,16 +73,17 @@ public class Form extends Screen {
                 if (val != null && val.length() > 0) {
                     try {
                         String[] parts = val.split("\n");
-                        if (parts.length >= 1) {
+                        if (cg.choiceType == Choice.MULTIPLE) {
+                            if (parts.length >= 3) {
+                                String[] flags = parts[2].split(",");
+                                for (int f = 0; f < flags.length && f < cg.size(); f++) {
+                                    cg.setSelectedIndex(f, "1".equals(flags[f].trim()));
+                                }
+                            }
+                        } else if (parts.length >= 1) {
                             int selIdx = Integer.parseInt(parts[0].trim());
                             if (selIdx >= 0 && selIdx < cg.size()) {
                                 cg.setSelectedIndex(selIdx, true);
-                            }
-                        }
-                        if (parts.length >= 3) {
-                            String[] flags = parts[2].split(",");
-                            for (int f = 0; f < flags.length && f < cg.size(); f++) {
-                                cg.setSelectedIndex(f, "1".equals(flags[f].trim()));
                             }
                         }
                         notifyItemStateChanged(item);
@@ -95,6 +96,11 @@ public class Form extends Screen {
 
     void notifyItemStateChanged(Item item) {
         if (itemStateListener != null) itemStateListener.itemStateChanged(item);
+    }
+
+    @Override
+    protected void onCommandsChanged() {
+        showNative();
     }
 
     /** Serialize form to native bridge and show it. */

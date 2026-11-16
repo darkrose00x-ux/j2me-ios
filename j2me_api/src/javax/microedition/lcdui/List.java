@@ -83,6 +83,11 @@ public class List extends Screen implements Choice {
     public void setFont(int i, Font f) { }
     public void setSelectCommand(Command cmd) { selectCommand = cmd; }
 
+    @Override
+    protected void onCommandsChanged() {
+        showNative();
+    }
+
     public void showNative() {
         NativeBridge.formBegin(getTitle(), 1); // type 1 = list
         NativeBridge.setListType(listType);
