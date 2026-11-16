@@ -14,9 +14,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
-    // Force portrait orientation across the entire application (matches KamenRider Decade)
+    // Allow GameViewController to rotate freely while keeping list/config screens portrait
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        return .portrait
+        var topVC = window?.rootViewController
+        while let presented = topVC?.presentedViewController {
+            if presented is UIAlertController { break }
+            topVC = presented
+        }
+        return topVC?.supportedInterfaceOrientations ?? .portrait
     }
 
     // MARK: UISceneSession Lifecycle
