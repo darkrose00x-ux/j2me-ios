@@ -143,17 +143,11 @@ class GameViewController: UIViewController {
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        switch layoutMode {
-        case .decade: return .portrait
-        case .ngage: return .landscape
-        }
+        return .allButUpsideDown
     }
 
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
-        switch layoutMode {
-        case .decade: return .portrait
-        case .ngage: return .landscapeRight
-        }
+        return .portrait
     }
 
     override func viewDidLoad() {
@@ -168,6 +162,19 @@ class GameViewController: UIViewController {
             setupDecadeLayout()
         case .ngage:
             setupNGageLayout()
+        }
+
+        // Apply saved configuration: Aspect ratio & Forced Fullscreen
+        let gid = appName.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
+        let isAspect = UserDefaults.standard.object(forKey: "aspect_\(gid)") as? Bool ?? true
+        emulatorView.isAspectFit = isAspect
+
+        let isForceFullscreen = UserDefaults.standard.bool(forKey: "fullscreen_\(gid)")
+        if isForceFullscreen {
+            isKeypadHidden = true
+            decadeKeypadView?.isHidden = true
+            floatingShowKeypadBtn.isHidden = true
+            keypadHeightConstraint?.constant = 0
         }
 
         // Placeholder icon — visible until first game frame
@@ -760,6 +767,13 @@ class GameViewController: UIViewController {
             self?.toggleTreoTatMan()
         })
 
+        // 3. Xoay màn hình (Xoay ngang / Xoay dọc)
+        let isLandscape = isCurrentOrientationLandscape()
+        let rotateTitle = isLandscape ? "🔄 Xoay dọc" : "🔄 Xoay ngang"
+        alert.addAction(UIAlertAction(title: rotateTitle, style: .default) { [weak self] _ in
+            self?.toggleScreenOrientation()
+        })
+
         // 4. Hẹn giờ tự tắt
         alert.addAction(UIAlertAction(title: "⏰ Hẹn giờ tự tắt", style: .default) { [weak self] _ in
             self?.promptShutdownTimer()
@@ -821,6 +835,62 @@ class GameViewController: UIViewController {
         }
 
         present(alert, animated: true)
+    }
+
+    private func isCurrentOrientationLandscape() -> Bool {
+        if let windowScene = view.window?.windowScene {
+            return windowScene.interfaceOrientation.isLandscape
+        }
+        return view.bounds.width > view.bounds.height
+    }
+
+    private func toggleScreenOrientation() {
+        let targetLandscape = !isCurrentOrientationLandscape()
+        forceOrientation(toLandscape: targetLandscape)
+    }
+
+    private func forceOrientation(toLandscape: Bool) {
+        if #available(iOS 16.0, *) {
+            guard let windowScene = view.window?.windowScene else { return }
+            let targetMask: UIInterfaceOrientationMask = toLandscape ? .landscapeRight : .portrait
+            let geometryPreferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: targetMask)
+            windowScene.requestGeometryUpdate(geometryPreferences) { [weak self] error in
+                print("[GameViewController] Geometry update error: \(error)")
+                self?.adjustLayoutForOrientation(isLandscape: toLandscape)
+            }
+            setNeedsUpdateOfSupportedInterfaceOrientations()
+        } else {
+            let orientationValue = toLandscape ? UIInterfaceOrientation.landscapeRight.rawValue : UIInterfaceOrientation.portrait.rawValue
+            UIDevice.current.setValue(orientationValue, forKey: "orientation")
+            UIViewController.attemptRotationToDeviceOrientation()
+            adjustLayoutForOrientation(isLandscape: toLandscape)
+        }
+    }
+
+    private func adjustLayoutForOrientation(isLandscape: Bool) {
+        let gid = appName.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
+        let isForceFullscreen = UserDefaults.standard.bool(forKey: "fullscreen_\(gid)")
+        if isForceFullscreen || isKeypadHidden {
+            keypadHeightConstraint?.constant = 0
+            decadeKeypadView?.isHidden = true
+            floatingShowKeypadBtn.isHidden = isForceFullscreen
+        } else {
+            let targetHeight: CGFloat = isLandscape ? 150 : 245
+            keypadCurrentHeight = targetHeight
+            keypadHeightConstraint?.constant = targetHeight
+            decadeKeypadView?.isHidden = false
+            floatingShowKeypadBtn.isHidden = true
+        }
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        let isLandscape = size.width > size.height
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.adjustLayoutForOrientation(isLandscape: isLandscape)
+        }, completion: nil)
     }
 
     // OLED Pure Black Overlay for authentic "Treo tắt màn"

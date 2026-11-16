@@ -103,24 +103,24 @@ enum ZIPReader {
             // Find End of Central Directory (EOCD) — scan backwards for signature 0x06054b50
             guard let eocdOffset = findEOCD(base: base, size: size) else { return nil }
 
-            let cdOffset = Int(readU32(base, eocdOffset + 16))   // offset of central directory
-            let cdEntries = Int(readU16(base, eocdOffset + 10)) // total entries
+            let cdOffset = Int(readU32(base, eocdOffset + 16, size: size))   // offset of central directory
+            let cdEntries = Int(readU16(base, eocdOffset + 10, size: size)) // total entries
             guard cdOffset >= 0, cdOffset < size else { return nil }
 
             // Walk central directory entries
             var pos = cdOffset
             for _ in 0..<cdEntries {
                 guard pos + 46 <= size else { break }
-                let sig = readU32(base, pos)
+                let sig = readU32(base, pos, size: size)
                 guard sig == 0x02014b50 else { break }
 
-                let method = readU16(base, pos + 10)
-                let compSize = Int(readU32(base, pos + 20))
-                let uncompSize = Int(readU32(base, pos + 24))
-                let nameLen = Int(readU16(base, pos + 28))
-                let extraLen = Int(readU16(base, pos + 30))
-                let commentLen = Int(readU16(base, pos + 32))
-                let localHeaderOff = Int(readU32(base, pos + 42))
+                let method = readU16(base, pos + 10, size: size)
+                let compSize = Int(readU32(base, pos + 20, size: size))
+                let uncompSize = Int(readU32(base, pos + 24, size: size))
+                let nameLen = Int(readU16(base, pos + 28, size: size))
+                let extraLen = Int(readU16(base, pos + 30, size: size))
+                let commentLen = Int(readU16(base, pos + 32, size: size))
+                let localHeaderOff = Int(readU32(base, pos + 42, size: size))
 
                 guard pos + 46 + nameLen <= size else { break }
                 let name = String(bytes: UnsafeBufferPointer(start: base + pos + 46, count: nameLen), encoding: .utf8) ?? ""
@@ -138,10 +138,11 @@ enum ZIPReader {
     }
 
     private static func findEOCD(base: UnsafePointer<UInt8>, size: Int) -> Int? {
+        guard size >= 22 else { return nil }
         // EOCD is at least 22 bytes, scan backwards
         let minPos = max(0, size - 65557) // max comment size is 65535
         for i in stride(from: size - 22, through: minPos, by: -1) {
-            if readU32(base, i) == 0x06054b50 {
+            if readU32(base, i, size: size) == 0x06054b50 {
                 return i
             }
         }
@@ -150,29 +151,31 @@ enum ZIPReader {
 
     private static func extractFromLocal(base: UnsafePointer<UInt8>, size: Int, offset: Int,
                                           method: UInt16, compSize: Int, uncompSize: Int) -> Data? {
-        guard offset + 30 <= size else { return nil }
-        let sig = readU32(base, offset)
+        guard offset >= 0, offset + 30 <= size else { return nil }
+        let sig = readU32(base, offset, size: size)
         guard sig == 0x04034b50 else { return nil }
 
-        let localNameLen = Int(readU16(base, offset + 26))
-        let localExtraLen = Int(readU16(base, offset + 28))
+        let localNameLen = Int(readU16(base, offset + 26, size: size))
+        let localExtraLen = Int(readU16(base, offset + 28, size: size))
         let dataStart = offset + 30 + localNameLen + localExtraLen
 
-        guard dataStart + compSize <= size else { return nil }
+        guard compSize >= 0, dataStart >= 0, dataStart + compSize <= size else { return nil }
 
         if method == 0 {
             // Stored (no compression)
             return Data(bytes: base + dataStart, count: compSize)
         } else if method == 8 {
             // Deflate — use system zlib via Compression framework
+            guard uncompSize > 0, uncompSize <= 50_000_000 else { return nil }
             let compressed = Data(bytes: base + dataStart, count: compSize)
-            // Try raw DEFLATE decompression
             var decompressed = Data(count: uncompSize)
-            let result = decompressed.withUnsafeMutableBytes { dstBuf in
-                compressed.withUnsafeBytes { srcBuf in
-                    compression_decode_buffer(
-                        dstBuf.baseAddress!.assumingMemoryBound(to: UInt8.self), uncompSize,
-                        srcBuf.baseAddress!.assumingMemoryBound(to: UInt8.self), compSize,
+            let result = decompressed.withUnsafeMutableBytes { dstBuf -> Int in
+                guard let dstPtr = dstBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return 0 }
+                return compressed.withUnsafeBytes { srcBuf -> Int in
+                    guard let srcPtr = srcBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return 0 }
+                    return compression_decode_buffer(
+                        dstPtr, uncompSize,
+                        srcPtr, compSize,
                         nil, COMPRESSION_ZLIB
                     )
                 }
@@ -182,12 +185,14 @@ enum ZIPReader {
         return nil
     }
 
-    private static func readU16(_ base: UnsafePointer<UInt8>, _ offset: Int) -> UInt16 {
-        UInt16(base[offset]) | (UInt16(base[offset + 1]) << 8)
+    private static func readU16(_ base: UnsafePointer<UInt8>, _ offset: Int, size: Int = Int.max) -> UInt16 {
+        guard offset >= 0, offset + 2 <= size else { return 0 }
+        return UInt16(base[offset]) | (UInt16(base[offset + 1]) << 8)
     }
 
-    private static func readU32(_ base: UnsafePointer<UInt8>, _ offset: Int) -> UInt32 {
-        UInt32(base[offset]) | (UInt32(base[offset + 1]) << 8) |
+    private static func readU32(_ base: UnsafePointer<UInt8>, _ offset: Int, size: Int = Int.max) -> UInt32 {
+        guard offset >= 0, offset + 4 <= size else { return 0 }
+        return UInt32(base[offset]) | (UInt32(base[offset + 1]) << 8) |
         (UInt32(base[offset + 2]) << 16) | (UInt32(base[offset + 3]) << 24)
     }
 }

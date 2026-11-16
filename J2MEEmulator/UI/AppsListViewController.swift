@@ -272,13 +272,18 @@ class AppsListViewController: UIViewController,
     // ============================================================
 
     @objc private func addAppTapped() {
-        let jarType = UTType(filenameExtension: "jar") ?? .data
-        let contentTypes: [UTType] = [
-            jarType,
-            UTType(filenameExtension: "zip") ?? .archive,
-            .data,
-            .item
-        ]
+        var contentTypes: [UTType] = []
+        if let customJar = UTType("com.sun.java-archive") {
+            contentTypes.append(customJar)
+        }
+        if let jarType = UTType(filenameExtension: "jar") {
+            contentTypes.append(jarType)
+        }
+        if let zipType = UTType(filenameExtension: "zip") {
+            contentTypes.append(zipType)
+        }
+        contentTypes.append(contentsOf: [.archive, .data, .item])
+
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: contentTypes, asCopy: true)
         picker.delegate = self
         picker.allowsMultipleSelection = true
@@ -288,13 +293,15 @@ class AppsListViewController: UIViewController,
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
         let fm = FileManager.default
+        let gamesDir = Self.gamesDirectory
+        try? fm.createDirectory(atPath: gamesDir, withIntermediateDirectories: true, attributes: nil)
         var imported = 0
 
         for url in urls {
             let ext = url.pathExtension.lowercased()
             guard ext == "jar" || ext == "zip" else { continue }
 
-            let destURL = URL(fileURLWithPath: Self.gamesDirectory)
+            let destURL = URL(fileURLWithPath: gamesDir)
                 .appendingPathComponent(url.lastPathComponent)
 
             let accessing = url.startAccessingSecurityScopedResource()
@@ -311,8 +318,12 @@ class AppsListViewController: UIViewController,
                     imported += 1
                 } catch {
                     if let data = try? Data(contentsOf: readURL) {
-                        try? data.write(to: destURL)
-                        imported += 1
+                        do {
+                            try data.write(to: destURL, options: .atomic)
+                            imported += 1
+                        } catch {
+                            print("[Swift] Write failed for \(url.lastPathComponent): \(error)")
+                        }
                     } else {
                         print("[Swift] Failed to import \(url.lastPathComponent): \(error)")
                     }

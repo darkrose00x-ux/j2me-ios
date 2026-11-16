@@ -13,6 +13,12 @@ class EmulatorView: UIView {
     // J2ME virtual canvas size
     var canvasWidth: Int = 240
     var canvasHeight: Int = 320
+    var isAspectFit: Bool = true {
+        didSet {
+            contentMode = isAspectFit ? .scaleAspectFit : .scaleToFill
+            layer.contentsGravity = isAspectFit ? .resizeAspect : .resize
+        }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -96,6 +102,14 @@ class EmulatorView: UIView {
 
         let cw = CGFloat(canvasWidth)
         let ch = CGFloat(canvasHeight)
+
+        if !isAspectFit {
+            let vx = point.x * cw / viewW
+            let vy = point.y * ch / viewH
+            let cx = max(0, min(cw - 1, vx))
+            let cy = max(0, min(ch - 1, vy))
+            return (Int(cx), Int(cy))
+        }
 
         // Calculate aspect-fit layout (same as CALayer's .resizeAspect)
         let scaleX = viewW / cw
