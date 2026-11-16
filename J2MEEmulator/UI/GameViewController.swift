@@ -150,6 +150,30 @@ class GameViewController: UIViewController {
         return .portrait
     }
 
+    private var currentGameId: String {
+        let jarName = URL(fileURLWithPath: jarPath).deletingPathExtension().lastPathComponent
+        return jarName.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
+    }
+
+    private var legacyGameId: String {
+        appName.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
+    }
+
+    private var isForceFullscreenEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "fullscreen_\(currentGameId)") ||
+        UserDefaults.standard.bool(forKey: "fullscreen_\(legacyGameId)")
+    }
+
+    private var isAspectFitEnabled: Bool {
+        if let val = UserDefaults.standard.object(forKey: "aspect_\(currentGameId)") as? Bool {
+            return val
+        }
+        if let val = UserDefaults.standard.object(forKey: "aspect_\(legacyGameId)") as? Bool {
+            return val
+        }
+        return true
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
@@ -165,11 +189,9 @@ class GameViewController: UIViewController {
         }
 
         // Apply saved configuration: Aspect ratio & Forced Fullscreen
-        let gid = appName.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
-        let isAspect = UserDefaults.standard.object(forKey: "aspect_\(gid)") as? Bool ?? true
-        emulatorView.isAspectFit = isAspect
+        let isForceFullscreen = isForceFullscreenEnabled
+        emulatorView.isAspectFit = isForceFullscreen ? false : isAspectFitEnabled
 
-        let isForceFullscreen = UserDefaults.standard.bool(forKey: "fullscreen_\(gid)")
         if isForceFullscreen {
             isKeypadHidden = true
             decadeKeypadView?.isHidden = true
@@ -296,9 +318,12 @@ class GameViewController: UIViewController {
 
         // 3. Virtual Keypad at bottom
         let keypad = DecadeKeypadView()
-        let gid = appName.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
+        let gid = currentGameId
+        let legGid = legacyGameId
         keypad.gameId = gid
-        let savedLayout = UserDefaults.standard.object(forKey: "keypad_layout_\(gid)") as? Int ?? 0
+        let savedLayout = (UserDefaults.standard.object(forKey: "keypad_layout_\(gid)") as? Int)
+            ?? (UserDefaults.standard.object(forKey: "keypad_layout_\(legGid)") as? Int)
+            ?? 0
         if savedLayout == 1 {
             keypad.currentLayout = .combined
         } else if savedLayout == 2 {
@@ -306,7 +331,9 @@ class GameViewController: UIViewController {
         } else {
             keypad.currentLayout = .arrows
         }
-        let savedAlpha = UserDefaults.standard.object(forKey: "keypad_alpha_\(gid)") as? Float ?? 64.0
+        let savedAlpha = (UserDefaults.standard.object(forKey: "keypad_alpha_\(gid)") as? Float)
+            ?? (UserDefaults.standard.object(forKey: "keypad_alpha_\(legGid)") as? Float)
+            ?? 64.0
         keypad.keypadAlphaValue = CGFloat(savedAlpha / 255.0)
 
         keypad.translatesAutoresizingMaskIntoConstraints = false
@@ -498,7 +525,7 @@ class GameViewController: UIViewController {
         guard index >= 0 && index < tabButtons.count else { return }
 
         // Capture screenshot and UI state of current tab before switching
-        if activeTabIndex < tabSessions.count {
+        if activeTabIndex != index && activeTabIndex < tabSessions.count {
             tabSessions[activeTabIndex].screenshot = takeSnapshot()
             if !formView.isHidden {
                 tabSessions[activeTabIndex].activeUI = 1
@@ -545,7 +572,7 @@ class GameViewController: UIViewController {
         tabScrollView.scrollRectToVisible(targetBtn.frame, animated: true)
 
         decadeKeypadView?.isHidden = isKeypadHidden
-        floatingShowKeypadBtn.isHidden = !isKeypadHidden
+        floatingShowKeypadBtn.isHidden = isForceFullscreenEnabled || !isKeypadHidden
 
         // Restore active UI state for this tab
         if session.activeUI == 1 {
@@ -741,11 +768,14 @@ class GameViewController: UIViewController {
     }
 
     private func takeSnapshot() -> UIImage? {
-        UIGraphicsBeginImageContextWithOptions(emulatorView.bounds.size, false, UIScreen.main.scale)
-        emulatorView.drawHierarchy(in: emulatorView.bounds, afterScreenUpdates: false)
-        let img = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return img
+        let size = emulatorView.bounds.size
+        guard size.width > 0 && size.height > 0, emulatorView.window != nil else {
+            return nil
+        }
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            emulatorView.drawHierarchy(in: emulatorView.bounds, afterScreenUpdates: false)
+        }
     }
 
     // ============================================================
@@ -868,8 +898,7 @@ class GameViewController: UIViewController {
     }
 
     private func adjustLayoutForOrientation(isLandscape: Bool) {
-        let gid = appName.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
-        let isForceFullscreen = UserDefaults.standard.bool(forKey: "fullscreen_\(gid)")
+        let isForceFullscreen = isForceFullscreenEnabled
         if isForceFullscreen || isKeypadHidden {
             keypadHeightConstraint?.constant = 0
             decadeKeypadView?.isHidden = true
@@ -1186,7 +1215,7 @@ class GameViewController: UIViewController {
 
     private func updateKeypadVisibility() {
         decadeKeypadView?.isHidden = isKeypadHidden
-        floatingShowKeypadBtn.isHidden = !isKeypadHidden
+        floatingShowKeypadBtn.isHidden = isForceFullscreenEnabled || !isKeypadHidden
         keypadHeightConstraint?.constant = isKeypadHidden ? 0 : keypadCurrentHeight
         if #available(iOS 14.0, *) {
             keyboardBtn.menu = buildVirtualKeyboardMenu()
@@ -1470,7 +1499,7 @@ class GameViewController: UIViewController {
         titleLabel.text = currentTabName
         emulatorView.isHidden = false
         decadeKeypadView?.isHidden = isKeypadHidden
-        floatingShowKeypadBtn.isHidden = !isKeypadHidden
+        floatingShowKeypadBtn.isHidden = isForceFullscreenEnabled || !isKeypadHidden
         textBoxView.isHidden = true
         formView.isHidden = true
         listView.isHidden = true
