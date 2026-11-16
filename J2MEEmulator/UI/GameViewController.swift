@@ -595,6 +595,7 @@ class GameViewController: UIViewController {
         GameViewController.slotFrameLock.unlock()
 
         for s in removedSlots {
+            j2me_ui_reset_slot(Int32(s))
             jvm_bridge_request_stop_slot(Int32(s))
         }
         DispatchQueue.global(qos: .utility).async {
@@ -616,6 +617,7 @@ class GameViewController: UIViewController {
         }
 
         let closedSlot = (index < tabSessions.count) ? tabSessions[index].slotIndex : index
+        j2me_ui_reset_slot(Int32(closedSlot))
         jvm_bridge_request_stop_slot(Int32(closedSlot))
         DispatchQueue.global(qos: .utility).async {
             jvm_bridge_destroy_slot(Int32(closedSlot))
@@ -697,13 +699,16 @@ class GameViewController: UIViewController {
         decadeKeypadView?.isHidden = isKeypadHidden
         floatingShowKeypadBtn.isHidden = isForceFullscreenEnabled || !isKeypadHidden
 
-        // Restore active UI state for this tab
-        if session.activeUI == 1 {
+        // Restore active UI state for this tab from native per-slot state or saved state
+        let slotAction = j2me_ui_get_slot_active_action(Int32(slotIdx))
+        if slotAction == Int32(J2ME_UI_ACTION_SHOW_FORM) || (slotAction == 0 && session.activeUI == 1) {
             showFormView()
-        } else if session.activeUI == 2 {
+        } else if slotAction == Int32(J2ME_UI_ACTION_SHOW_LIST) || (slotAction == 0 && session.activeUI == 2) {
             showListView()
-        } else if session.activeUI == 3 {
+        } else if slotAction == Int32(J2ME_UI_ACTION_SHOW_TEXTBOX) || (slotAction == 0 && session.activeUI == 3) {
             showTextBoxView()
+        } else if slotAction == Int32(J2ME_UI_ACTION_SHOW_ALERT) {
+            showAlert()
         } else {
             showCanvasView()
             // Immediately isolate and show this tab's frame!
@@ -1720,7 +1725,7 @@ class GameViewController: UIViewController {
     func showListView() {
         j2me_input_reset()
         let formTitle = String(cString: j2me_ui_get_form_title())
-        titleLabel.text = formTitle.isEmpty ? "Menu" : formTitle
+        titleLabel.text = formTitle.isEmpty ? (appName.isEmpty ? "Menu" : appName) : formTitle
         listView.buildFromNativeData()
         listView.isHidden = false
         emulatorView.isHidden = true

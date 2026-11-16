@@ -8,6 +8,8 @@
 #include "NativeBridge/j2me_audio.h"
 
 // Getters for Form/List/Alert data built by j2me_ui.m
+int j2me_ui_get_slot_active_action(int slot);
+void j2me_ui_reset_slot(int slot);
 const char *j2me_ui_get_form_title(void);
 int j2me_ui_get_form_item_count(void);
 int j2me_ui_get_form_item_type(int index);

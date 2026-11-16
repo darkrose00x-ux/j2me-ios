@@ -39,6 +39,8 @@ const char *j2me_ui_get_textbox_text(void);
 void j2me_ui_set_form_item_text(int index, const char *text);
 
 // Form and UI item getters for Swift
+int j2me_ui_get_slot_active_action(int slot);
+void j2me_ui_reset_slot(int slot);
 const char *j2me_ui_get_form_title(void);
 int j2me_ui_get_form_item_count(void);
 int j2me_ui_get_form_item_type(int index);
