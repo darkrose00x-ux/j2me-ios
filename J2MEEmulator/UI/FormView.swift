@@ -18,6 +18,16 @@ extension UIView {
     }
 }
 
+extension String {
+    static func safeCString(_ ptr: UnsafePointer<CChar>?) -> String {
+        guard let ptr = ptr else { return "" }
+        if let s = String(validatingUTF8: ptr) {
+            return s
+        }
+        return String(cString: ptr, encoding: .isoLatin1) ?? ""
+    }
+}
+
 // ============================================================
 // MARK: - J2METextBoxView (Authentic Decade Full-screen In-Game Text Input)
 // ============================================================
@@ -169,7 +179,7 @@ class J2METextBoxView: UIView, UITextViewDelegate {
 
     func buildFromNativeData() {
         // Load initial text
-        let initial = String(cString: j2me_ui_get_textbox_text())
+        let initial = String.safeCString(j2me_ui_get_textbox_text())
         textView.text = initial
         placeholderLabel.isHidden = !initial.isEmpty
 
@@ -179,7 +189,7 @@ class J2METextBoxView: UIView, UITextViewDelegate {
 
         let cmdCount = j2me_ui_get_command_count()
         for i in 0..<cmdCount {
-            let cmdLabel = String(cString: j2me_ui_get_command_label(Int32(i)))
+            let cmdLabel = String.safeCString(j2me_ui_get_command_label(Int32(i)))
             let cmdId = j2me_ui_get_command_id(Int32(i))
 
             let btn = UIButton(type: .system)
@@ -325,8 +335,8 @@ class FormView: UIView, UITextFieldDelegate {
         let count = Int(j2me_ui_get_form_item_count())
         for i in 0..<count {
             let itemType = j2me_ui_get_form_item_type(Int32(i))
-            let label = String(cString: j2me_ui_get_form_item_label(Int32(i)))
-            let text = String(cString: j2me_ui_get_form_item_text(Int32(i)))
+            let label = String.safeCString(j2me_ui_get_form_item_label(Int32(i)))
+            let text = String.safeCString(j2me_ui_get_form_item_text(Int32(i)))
 
             switch itemType {
             case 0:
@@ -342,7 +352,7 @@ class FormView: UIView, UITextFieldDelegate {
 
         let cmdCount = j2me_ui_get_command_count()
         for i in 0..<cmdCount {
-            let cmdLabel = String(cString: j2me_ui_get_command_label(Int32(i)))
+            let cmdLabel = String.safeCString(j2me_ui_get_command_label(Int32(i)))
             let cmdId = j2me_ui_get_command_id(Int32(i))
             let cmdType = j2me_ui_get_command_type(Int32(i))
             commands.append((label: cmdLabel, id: cmdId, type: cmdType))
@@ -625,7 +635,7 @@ class FormView: UIView, UITextFieldDelegate {
     @objc private func choiceRowTapped(_ sender: UIButton) {
         let itemIndex = sender.tag / 1000
         let optIndex = sender.tag % 1000
-        let raw = String(cString: j2me_ui_get_form_item_text(Int32(itemIndex)))
+        let raw = String.safeCString(j2me_ui_get_form_item_text(Int32(itemIndex)))
         var parts = raw.components(separatedBy: "\n")
         while parts.count < 3 { parts.append("") }
 
@@ -760,7 +770,7 @@ class J2MEListView: UIView, UITableViewDataSource, UITableViewDelegate {
         commands.removeAll()
         let count = j2me_ui_get_list_item_count()
         for i in 0..<count {
-            let title = String(cString: j2me_ui_get_list_item(Int32(i)))
+            let title = String.safeCString(j2me_ui_get_list_item(Int32(i)))
             let isRunning = j2me_ui_is_list_item_running(Int32(i)) != 0
             items.append((title: title, isRunning: isRunning))
         }
@@ -769,7 +779,7 @@ class J2MEListView: UIView, UITableViewDataSource, UITableViewDelegate {
 
         let cmdCount = j2me_ui_get_command_count()
         for i in 0..<cmdCount {
-            let cmdLabel = String(cString: j2me_ui_get_command_label(Int32(i)))
+            let cmdLabel = String.safeCString(j2me_ui_get_command_label(Int32(i)))
             let cmdId = j2me_ui_get_command_id(Int32(i))
             let cmdType = j2me_ui_get_command_type(Int32(i))
             commands.append((label: cmdLabel, id: cmdId, type: cmdType))
@@ -801,9 +811,11 @@ class J2MEListView: UIView, UITableViewDataSource, UITableViewDelegate {
                 return l.contains("thoát") || l.contains("back") || l.contains("quay lại") || l.contains("hủy") || l.contains("đóng")
             } ?? commands.first {
                 $0.type == 2 || $0.type == 3 || $0.type == 7
-            } ?? commands.last!
-            let exitBtn = makeRedButton(title: exitCmd.label.uppercased(), tag: Int(exitCmd.id))
-            bottomButtonBar.addArrangedSubview(exitBtn)
+            } ?? commands.last
+            if let exitCmd = exitCmd {
+                let exitBtn = makeRedButton(title: exitCmd.label.uppercased(), tag: Int(exitCmd.id))
+                bottomButtonBar.addArrangedSubview(exitBtn)
+            }
         }
     }
 

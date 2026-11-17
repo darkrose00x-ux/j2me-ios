@@ -1696,7 +1696,7 @@ class GameViewController: UIViewController {
 
     func showTextBoxView() {
         j2me_input_reset()
-        let formTitle = String(cString: j2me_ui_get_form_title())
+        let formTitle = String.safeCString(j2me_ui_get_form_title())
         titleLabel.text = formTitle.isEmpty ? "Tài khoản" : formTitle
         textBoxView.buildFromNativeData()
         textBoxView.isHidden = false
@@ -1710,7 +1710,7 @@ class GameViewController: UIViewController {
 
     func showFormView() {
         j2me_input_reset()
-        let formTitle = String(cString: j2me_ui_get_form_title())
+        let formTitle = String.safeCString(j2me_ui_get_form_title())
         titleLabel.text = formTitle.isEmpty ? appName : formTitle
         formView.buildFromNativeData()
         formView.isHidden = false
@@ -1724,7 +1724,7 @@ class GameViewController: UIViewController {
 
     func showListView() {
         j2me_input_reset()
-        let formTitle = String(cString: j2me_ui_get_form_title())
+        let formTitle = String.safeCString(j2me_ui_get_form_title())
         titleLabel.text = formTitle.isEmpty ? (appName.isEmpty ? "Menu" : appName) : formTitle
         listView.buildFromNativeData()
         listView.isHidden = false
@@ -1738,8 +1738,8 @@ class GameViewController: UIViewController {
 
     func showAlert() {
         j2me_input_reset()
-        let title = String(cString: j2me_ui_get_form_title())
-        let text = String(cString: j2me_ui_get_alert_text())
+        let title = String.safeCString(j2me_ui_get_form_title())
+        let text = String.safeCString(j2me_ui_get_alert_text())
 
         let alert = UIAlertController(title: title, message: text, preferredStyle: .alert)
 
@@ -1754,7 +1754,7 @@ class GameViewController: UIViewController {
             })
         } else {
             for i in 0..<cmdCount {
-                let label = String(cString: j2me_ui_get_command_label(Int32(i)))
+                let label = String.safeCString(j2me_ui_get_command_label(Int32(i)))
                 let cmdId = j2me_ui_get_command_id(Int32(i))
                 alert.addAction(UIAlertAction(title: label, style: .default) { [weak self] _ in
                     self?.alertTimeoutWork?.cancel()

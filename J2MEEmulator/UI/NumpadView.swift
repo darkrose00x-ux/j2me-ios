@@ -123,7 +123,7 @@ class NumpadView: UIView {
         guard cmdCount > 0 else { return }
 
         for i in 0..<cmdCount {
-            let label = String(cString: j2me_ui_get_command_label(Int32(i)))
+            let label = String.safeCString(j2me_ui_get_command_label(Int32(i)))
             let cmdId = j2me_ui_get_command_id(Int32(i))
 
             let btn = UIButton(type: .system)
